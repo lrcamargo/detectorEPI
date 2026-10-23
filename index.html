@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>🦺 Detector de EPIs — Feira de Ciências</title>
+<style>
+:root{--bg:#0a1120;--card:#111a2c;--card2:#0e1626;--line:#22304d;--txt:#e9eefb;--mut:#8fa2c5;--green:#22c55e;--red:#ff5252;--cyan:#22d3ee}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:radial-gradient(1100px 700px at 75% -10%,#182647 0%,var(--bg) 60%);color:var(--txt);font-family:system-ui,'Segoe UI',Roboto,Arial,sans-serif;min-height:100vh}
+.app{max-width:1200px;margin:0 auto;padding:16px 18px 28px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+h1{font-size:26px;margin:0}
+.sub{margin:2px 0 0;color:var(--mut);font-size:14px}
+.badge{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:8px 14px;font-size:13px;color:var(--mut)}
+.badge.ok{color:#86efac;border-color:#14532d}
+.grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(300px,1fr);gap:16px}
+@media(max-width:920px){.grid{grid-template-columns:1fr}}
+.stage{position:relative;border-radius:14px;overflow:hidden;background:#050a14;border:1px solid var(--line);min-height:300px;transition:box-shadow .2s}
+.stage.alerting{animation:flash 1s infinite}
+@keyframes flash{0%,100%{box-shadow:0 0 0 3px rgba(255,82,82,.9)}50%{box-shadow:0 0 0 8px rgba(255,82,82,.35)}}
+video{display:block;width:100%;background:#000}
+.stage.mirror video{transform:scaleX(-1)}
+#overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.banner{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:none;background:rgba(220,38,38,.96);color:#fff;font-weight:800;font-size:clamp(14px,2.2vw,22px);padding:10px 18px;border-radius:12px;animation:pulse 1s infinite;white-space:nowrap;z-index:3}
+@keyframes pulse{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.06)}}
+.okchip{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:none;background:rgba(21,128,61,.92);color:#dcfce7;font-weight:700;padding:8px 16px;border-radius:999px;font-size:14px;z-index:3}
+.start-overlay{position:absolute;inset:0;background:rgba(4,9,20,.9);display:flex;align-items:center;justify-content:center;padding:18px;z-index:5}
+.start-card{max-width:460px;text-align:center;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px}
+.start-card h2{margin:0 0 8px}
+.start-card p{color:var(--mut);font-size:14px;line-height:1.55}
+button{font:inherit;cursor:pointer;border:none;border-radius:10px}
+#startBtn{background:#16a34a;color:#fff;font-weight:800;font-size:17px;padding:12px 22px;margin:10px 0;border-radius:12px}
+#startBtn:disabled{opacity:.6;cursor:wait}
+.hint{font-size:12px!important}
+.hint.bad{color:#fca5a5!important;font-weight:600}
+.warnbox{display:none;margin-top:10px;background:#3b1216;border:1px solid #7f1d1d;color:#fecaca;border-radius:10px;padding:10px;font-size:12.5px;text-align:left;line-height:1.5}
+.stagebar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.stagebar button{background:var(--card);color:var(--txt);border:1px solid var(--line);padding:8px 12px;font-size:13px;border-radius:10px}
+.stagebar button:hover{border-color:#3b82f6}
+.ctl{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--mut);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px 12px}
+.ctl input[type=range]{width:120px}
+.panel{display:flex;flex-direction:column;gap:12px}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;text-align:center}
+.card .num{font-size:36px;font-weight:800;line-height:1.1}
+.card .lbl{font-size:12px;color:var(--mut);margin-top:4px}
+.card.bad{border-color:#7f1d1d}
+.card.bad .num{color:var(--red)}
+.box{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.box h3{margin:0 0 8px;font-size:15px}
+#log{list-style:none;margin:0 0 10px;padding:0;max-height:250px;overflow:auto;display:flex;flex-direction:column;gap:6px;font-size:13px}
+#log li{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:6px 10px;color:#cfe0ff}
+#log li.bad{border-color:#7f1d1d;background:#2a1214;color:#fecaca}
+.ghost{background:transparent;border:1px dashed var(--line);color:var(--mut);padding:8px 12px;width:100%;border-radius:10px}
+details summary{cursor:pointer;font-weight:700}
+details ol{margin:10px 0 0;padding-left:20px;color:var(--mut);font-size:13px;line-height:1.55}
+details p{color:var(--mut);font-size:13px;line-height:1.5}
+footer{margin-top:16px;color:var(--mut);font-size:12.5px;line-height:1.6}
+footer p{margin:4px 0}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div>
+      <h1>🦺 Detector de EPIs</h1>
+      <p class="sub">Feira de Ciências · visão computacional rodando 100% no navegador</p>
+    </div>
+    <div class="badge" id="aiBadge">IA: aguardando início</div>
+  </header>
+
+  <div class="grid">
+    <section>
+      <div class="stage" id="stage">
+        <video id="video" autoplay muted playsinline></video>
+        <canvas id="overlay"></canvas>
+        <div class="banner" id="banner">⚠️ PESSOA SEM EPI — COLOQUE O CAPACETE!</div>
+        <div class="okchip" id="okChip">✓ Todo mundo com EPI</div>
+        <div class="start-overlay" id="startOverlay">
+          <div class="start-card">
+            <h2>Vamos começar!</h2>
+            <p>Fique de 1 a 3 metros da câmera. O app <b>conta as pessoas</b> que passam, verifica o <b>capacete</b> e o <b>colete</b> e <b>apita</b> quando alguém estiver sem EPI.</p>
+            <button id="startBtn">▶ Ligar câmera e iniciar</button>
+            <p class="hint" id="startMsg">A internet só é usada para baixar a IA ao abrir a página (uns 5 MB). Depois disso, toda a análise roda no seu computador — nenhuma imagem sai da máquina.</p>
+            <div class="warnbox" id="cdnWarn">
+              ⚠️ <b>Não consegui baixar as bibliotecas de IA.</b><br>
+              Isto substitui o erro antigo de <i>ort.min.js</i>: esta versão não usa arquivos locais nem Web Workers.
+              Basta conectar à internet e recarregar a página (F5). Se a rede bloquear, use o hotspot do celular.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stagebar">
+        <button id="switchCam">🔄 Trocar câmera</button>
+        <button id="snapBtn">📸 Salvar foto</button>
+        <button id="testBeep">🔔 Testar bip</button>
+        <button id="soundBtn">🔊 Som: ligado</button>
+        <label class="ctl">Rigor do capacete
+          <input type="range" id="sens" min="0" max="100" value="50">
+          <span id="sensVal">50</span>
+        </label>
+        <label class="ctl"><input type="checkbox" id="showBox" checked> mostrar área da cabeça analisada</label>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <div class="cards">
+        <div class="card"><div class="num" id="cNa">0</div><div class="lbl">Na cena agora</div></div>
+        <div class="card"><div class="num" id="cPass">0</div><div class="lbl">Passaram no total</div></div>
+        <div class="card bad"><div class="num" id="cAlert">0</div><div class="lbl">Alertas sem EPI</div></div>
+      </div>
+
+      <div class="box">
+        <h3>📋 Registro de eventos</h3>
+        <ul id="log"></ul>
+        <button id="resetBtn" class="ghost">Zerar contadores</button>
+      </div>
+
+      <details class="box">
+        <summary>📖 Como o app funciona (para explicar aos jurados)</summary>
+        <ol>
+          <li><b>IA localiza as pessoas:</b> o modelo COCO-SSD (TensorFlow.js) roda dentro do navegador e desenha a caixa de cada pessoa detectada.</li>
+          <li><b>Análise do capacete:</b> recortamos a região da <b>cabeça</b> e contamos, no espaço de cores HSV, a proporção de pixels com cores típicas de capacete (amarelo, branco, laranja, vermelho, azul). Acima do limite configurável = com capacete.</li>
+          <li><b>Colete refletivo:</b> mesma análise no <b>tronco</b>, procurando amarelo/verde-limão/laranja forte.</li>
+          <li><b>Contagem:</b> um rastreador associa cada pessoa de um quadro à mesma pessoa do quadro anterior; cada pessoa nova soma 1 no total — sem contar a mesma pessoa duas vezes.</li>
+          <li><b>Bip de alerta:</b> se alguém fica sem capacete, o app apita repetidamente (Web Audio API) até a pessoa colocar o EPI.</li>
+        </ol>
+        <p><b>Limitações honestas</b> (jurados adoram isso!): óculos e luvas são pequenos demais para a análise por cor desta versão — o app verifica <b>capacete</b> e <b>colete</b>. Capacetes pretos ou muito escuros podem não ser reconhecidos.</p>
+      </details>
+    </aside>
+  </div>
+
+  <footer>
+    <p>💡 Dicas: ambientes bem iluminados funcionam melhor · capacetes amarelos, brancos, laranjas, vermelhos ou azuis são reconhecidos com mais facilidade · sem Wi-Fi na feira? Use o 4G/5G do celular como hotspot só nos primeiros segundos (download da IA).</p>
+    <p>🔒 Privacidade: as imagens não saem do computador — todo o processamento é local.</p>
+  </footer>
+</div>
+
+<!-- Bibliotecas de IA via CDN (funcionam mesmo abrindo o arquivo com duplo clique) -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+<script>
+"use strict";
+(function(){
+const $=id=>document.getElementById(id);
+const video=$('video'),stage=$('stage'),overlay=$('overlay'),octx=overlay.getContext('2d');
+const work=document.createElement('canvas');
+const wctx=work.getContext('2d',{willReadFrequently:true});
+
+const S={
+  model:null,running:false,starting:false,stream:null,
+  facing:'user',mirror:true,sound:true,sens:0.35,showBox:true,
+  tracks:new Map(),nextId:1,totalPassed:0,totalAlerts:0,lastBeep:0,errLogged:false,
+  cdnOk:false,audio:null
+};
+
+/* ---------------- registro de eventos ---------------- */
+const logEl=$('log');
+function log(msg,cls){
+  const li=document.createElement('li');
+  if(cls)li.className=cls;
+  li.textContent=new Date().toLocaleTimeString('pt-BR')+' — '+msg;
+  logEl.prepend(li);
+  while(logEl.children.length>40)logEl.removeChild(logEl.lastChild);
+}
+
+/* ---------------- bip (Web Audio) ---------------- */
+function initAudio(){
+  if(!S.audio){
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(AC)S.audio=new AC();
+  }
+  if(S.audio&&S.audio.state==='suspended')S.audio.resume();
+}
+function beep(){
+  if(!S.sound)return;
+  initAudio();
+  const a=S.audio;if(!a)return;
+  const t=a.currentTime;
+  [[0,900,.12],[.16,900,.12],[.32,1300,.24]].forEach(function(p){
+    const o=a.createOscillator(),g=a.createGain();
+    o.type='square';o.frequency.value=p[1];
+    g.gain.setValueAtTime(.0001,t+p[0]);
+    g.gain.exponentialRampToValueAtTime(.35,t+p[0]+.015);
+    g.gain.exponentialRampToValueAtTime(.0001,t+p[0]+p[2]);
+    o.connect(g);g.connect(a.destination);
+    o.start(t+p[0]);o.stop(t+p[0]+p[2]+.05);
+  });
+}
+
+/* ---------------- análise de cores (EPI) ---------------- */
+function rgb2hsv(r,g,b){
+  r/=255;g/=255;b/=255;
+  const mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn;
+  let h=0;
+  if(d>0){
+    if(mx===r)h=60*(((g-b)/d)%6);
+    else if(mx===g)h=60*((b-r)/d+2);
+    else h=60*((r-g)/d+4);
+  }
+  if(h<0)h+=360;
+  return{h:h,s:mx===0?0:d/mx,v:mx};
+}
+/* retorna {helmet,vest} para um pixel */
+function classifyPixel(r,g,b){
+  const c=rgb2hsv(r,g,b);
+  if(c.s<0.16&&c.v>0.74)return{helmet:true,vest:false};        // branco (capacete)
+  if(c.s>0.45&&c.v>0.45){
+    if(c.h>=45&&c.h<160)return{helmet:true,vest:true};         // amarelo / verde-limão
+    if(c.h>=160&&c.h<200)return{helmet:false,vest:true};       // verde (colete)
+    if(c.h>=200&&c.h<262)return{helmet:true,vest:false};       // azul (capacete)
+    if(c.h>=335||c.h<14)return{helmet:true,vest:true};         // vermelho
+    if(c.h>=14&&c.h<45&&c.s>0.60&&c.v>0.52)return{helmet:true,vest:true}; // laranja forte
+  }
+  return{helmet:false,vest:false};
+}
+/* amostra uma região do frame e devolve proporção de cores de EPI */
+function sampleRegion(x,y,w,h){
+  const W=work.width,H=work.height;
+  x=Math.max(0,Math.min(W-1,Math.round(x)));
+  y=Math.max(0,Math.min(H-1,Math.round(y)));
+  w=Math.max(2,Math.min(W-x,Math.round(w)));
+  h=Math.max(2,Math.min(H-y,Math.round(h)));
+  let img;
+  try{img=wctx.getImageData(x,y,w,h).data;}catch(e){return null;}
+  let total=0,helmet=0,vest=0;
+  const step=3;
+  for(let py=0;py<h;py+=step){
+    for(let px=0;px<w;px+=step){
+      const i=(py*w+px)*4;
+      const c=classifyPixel(img[i],img[i+1],img[i+2]);
+      total++;
+      if(c.helmet)helmet++;
+      if(c.vest)vest++;
+    }
+  }
+  return{helmetRatio:total?helmet/total:0,vestRatio:total?vest/total:0,box:[x,y,w,h]};
+}
+function majority(v){
+  let y=0;
+  for(let i=0;i<v.length;i++)if(v[i])y++;
+  return y>=v.length/2;
+}
+function analyzeTrack(t){
+  const head=sampleRegion(t.x+t.w*0.22,t.y,t.w*0.56,t.h*0.20);
+  if(!head)return;
+  t.headBox=head.box;
+  t.helmetVotes.push(head.helmetRatio>=S.sens);
+  if(t.helmetVotes.length>7)t.helmetVotes.shift();
+  t.helmet=majority(t.helmetVotes);
+  const torso=sampleRegion(t.x,t.y+t.h*0.26,t.w,t.h*0.34);
+  if(torso){
+    t.vestVotes.push(torso.vestRatio>=0.20);
+    if(t.vestVotes.length>7)t.vestVotes.shift();
+    t.vest=majority(t.vestVotes);
+  }
+}
+
+/* ---------------- rastreamento + contagem ---------------- */
+function updateTracks(dets){
+  const ds=dets.map(function(p){
+    const b=p.bbox;
+    return{x:b[0],y:b[1],w:b[2],h:b[3],cx:b[0]+b[2]/2,cy:b[1]+b[3]/2,score:p.score};
+  });
+  const pairs=[];
+  S.tracks.forEach(function(t){
+    if(t.missed>6)return;
+    ds.forEach(function(d,di){
+      const dist=Math.hypot(t.cx-d.cx,t.cy-d.cy);
+      if(dist<Math.max(t.w,d.w)*0.6+10)pairs.push([dist,t.id,di]);
+    });
+  });
+  pairs.sort(function(a,b){return a[0]-b[0];});
+  const usedD=new Set(),matched=new Set();
+  pairs.forEach(function(pr){
+    if(matched.has(pr[1])||usedD.has(pr[2]))return;
+    matched.add(pr[1]);usedD.add(pr[2]);
+    const t=S.tracks.get(pr[1]),d=ds[pr[2]];
+    t.x=d.x;t.y=d.y;t.w=d.w;t.h=d.h;t.cx=d.cx;t.cy=d.cy;t.score=d.score;
+    t.missed=0;t.age++;
+  });
+  ds.forEach(function(d,di){
+    if(usedD.has(di))return;
+    S.tracks.set(S.nextId,{
+      id:S.nextId++,x:d.x,y:d.y,w:d.w,h:d.h,cx:d.cx,cy:d.cy,score:d.score,
+      age:1,missed:0,counted:false,violated:false,
+      helmet:undefined,vest:undefined,helmetVotes:[],vestVotes:[],headBox:null
+    });
+  });
+  S.tracks.forEach(function(t){
+    if(!matched.has(t.id))t.missed++;
+  });
+  S.tracks.forEach(function(t){
+    if(!t.counted&&t.age>=3){t.counted=true;S.totalPassed++;log('Pessoa #'+t.id+' entrou na cena');}
+    if(!t.violated&&t.age>=6&&t.helmet===false){t.violated=true;S.totalAlerts++;log('Pessoa #'+t.id+' está SEM capacete!','bad');}
+    if(t.missed>8)S.tracks.delete(t.id);
+  });
+}
+
+/* ---------------- alertas ---------------- */
+function offenders(){
+  const out=[];
+  S.tracks.forEach(function(t){
+    if(t.counted&&t.missed===0&&t.helmet===false)out.push(t);
+  });
+  return out;
+}
+function handleAlerts(){
+  const off=offenders();
+  let anyone=false;
+  S.tracks.forEach(function(t){if(t.missed===0)anyone=true;});
+  $('banner').style.display=off.length?'block':'none';
+  stage.classList.toggle('alerting',off.length>0);
+  $('okChip').style.display=(anyone&&off.length===0)?'block':'none';
+  const now=performance.now();
+  if(off.length&&now-S.lastBeep>1600){S.lastBeep=now;beep();}
+}
+
+/* ---------------- desenho ---------------- */
+function draw(){
+  const W=overlay.width,H=overlay.height;
+  octx.clearRect(0,0,W,H);
+  const fs=Math.max(15,Math.round(W*0.02));
+  octx.textBaseline='top';
+  S.tracks.forEach(function(t){
+    if(t.missed>0)return;
+    const sem=t.helmet===false,pend=t.helmet===undefined;
+    const col=pend?'#fbbf24':(sem?'#ff4d4f':'#22c55e');
+    const x=S.mirror?W-(t.x+t.w):t.x;
+    octx.lineWidth=Math.max(3,W*0.004);
+    octx.strokeStyle=col;
+    octx.strokeRect(x,t.y,t.w,t.h);
+    if(S.showBox&&t.headBox){
+      const hb=t.headBox;
+      const mx=S.mirror?W-(hb[0]+hb[2]):hb[0];
+      octx.save();
+      octx.setLineDash([6,5]);
+      octx.lineWidth=2;
+      octx.strokeStyle='#22d3ee';
+      octx.strokeRect(mx,hb[1],hb[2],hb[3]);
+      octx.restore();
+    }
+    const l1=sem?('#'+t.id+' SEM EPI ⚠️'):(pend?('#'+t.id+' analisando…'):('#'+t.id+' COM EPI ✓'));
+    const st1=t.helmet===undefined?'…':(t.helmet?'✓':'✗');
+    const st2=t.vest?'✓':'✗';
+    const l2='capacete '+st1+' · colete '+st2;
+    octx.font='bold '+fs+'px system-ui,Segoe UI,Arial';
+    const w1=octx.measureText(l1).width;
+    octx.font=Math.round(fs*0.8)+'px system-ui,Segoe UI,Arial';
+    const w2=octx.measureText(l2).width;
+    const bw=Math.max(w1,w2)+16,bh=fs*0.8+fs+16;
+    let by=t.y-bh-4;if(by<0)by=t.y+4;
+    octx.fillStyle='rgba(8,12,24,0.8)';
+    octx.fillRect(x,by,bw,bh);
+    octx.strokeStyle=col;octx.lineWidth=2;
+    octx.strokeRect(x,by,bw,bh);
+    octx.fillStyle=col;
+    octx.font='bold '+fs+'px system-ui,Segoe UI,Arial';
+    octx.fillText(l1,x+8,by+7);
+    octx.fillStyle='#dbe6ff';
+    octx.font=Math.round(fs*0.8)+'px system-ui,Segoe UI,Arial';
+    octx.fillText(l2,x+8,by+9+fs);
+  });
+}
+
+/* ---------------- painel ---------------- */
+function updatePanel(){
+  let na=0;
+  S.tracks.forEach(function(t){if(t.missed===0)na++;});
+  $('cNa').textContent=na;
+  $('cPass').textContent=S.totalPassed;
+  $('cAlert').textContent=S.totalAlerts;
+}
+
+/* ---------------- laço principal ---------------- */
+async function loop(){
+  if(!S.running)return;
+  try{
+    if(video.readyState>=2&&video.videoWidth>0){
+      wctx.drawImage(video,0,0,work.width,work.height);
+      const preds=await S.model.detect(video,10,0.5);
+      updateTracks(preds.filter(function(p){return p.class==='person'&&p.score>=0.5;}));
+      S.tracks.forEach(function(t){if(t.missed===0)analyzeTrack(t);});
+      draw();
+      updatePanel();
+      handleAlerts();
+    }
+  }catch(e){
+    console.error(e);
+    if(!S.errLogged){S.errLogged=true;log('Erro na análise: '+((e&&e.message)||e),'bad');}
+  }
+  setTimeout(loop,120);
+}
+
+/* ---------------- câmera ---------------- */
+function stopCamera(){
+  if(S.stream){S.stream.getTracks().forEach(function(tr){tr.stop();});S.stream=null;}
+}
+async function openCamera(facing){
+  stopCamera();
+  const order=facing==='user'?['user','environment']:['environment','user'];
+  let lastErr=null;
+  for(let i=0;i<order.length;i++){
+    try{
+      const st=await navigator.mediaDevices.getUserMedia({
+        audio:false,
+        video:{facingMode:order[i],width:{ideal:1280},height:{ideal:720}}
+      });
+      S.stream=st;S.facing=order[i];S.mirror=(order[i]==='user');
+      stage.classList.toggle('mirror',S.mirror);
+      video.srcObject=st;
+      await new Promise(function(res){
+        if(video.readyState>=1&&video.videoWidth>0)return res();
+        video.addEventListener('loadedmetadata',res,{once:true});
+      });
+      await video.play();
+      const w=video.videoWidth||640,h=video.videoHeight||480;
+      overlay.width=work.width=w;
+      overlay.height=work.height=h;
+      return;
+    }catch(e){lastErr=e;}
+  }
+  throw lastErr||new Error('câmera indisponível');
+}
+function msgCam(e){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)
+    return 'Este navegador não libera a câmera aqui. Abra o arquivo no Chrome ou Edge atualizados (duplo clique no arquivo funciona).';
+  if(e&&(e.name==='NotAllowedError'||e.name==='PermissionDeniedError'))
+    return 'Permissão de câmera negada. Clique no ícone de cadeado/câmera na barra de endereço, permita a câmera e recarregue a página.';
+  if(e&&e.name==='NotFoundError')
+    return 'Nenhuma câmera foi encontrada neste dispositivo.';
+  return 'Erro ao abrir a câmera: '+((e&&e.message)||e);
+}
+async function switchCam(){
+  let devs=[];
+  try{devs=await navigator.mediaDevices.enumerateDevices();}catch(e){}
+  if(devs.filter(function(d){return d.kind==='videoinput';}).length<=1){
+    log('Só encontrei uma câmera neste dispositivo.');
+    return;
+  }
+  try{
+    await openCamera(S.facing==='user'?'environment':'user');
+    S.tracks.clear();
+    log('Câmera trocada.');
+  }catch(e){log('Falha ao trocar câmera: '+((e&&e.message)||e),'bad');}
+}
+
+/* ---------------- início ---------------- */
+function setStartMsg(m,bad){
+  const el=$('startMsg');
+  el.textContent=m;
+  el.classList.toggle('bad',!!bad);
+}
+async function start(){
+  if(S.running||S.starting)return;
+  if(!S.cdnOk){
+    setStartMsg('A biblioteca de IA não carregou. Conecte-se à internet e recarregue a página (F5).',true);
+    return;
+  }
+  S.starting=true;
+  $('startBtn').disabled=true;
+  try{
+    setStartMsg('Pedindo acesso à câmera…');
+    await openCamera('user');
+  }catch(e){
+    setStartMsg(msgCam(e),true);
+    $('startBtn').disabled=false;S.starting=false;
+    return;
+  }
+  try{
+    setStartMsg('Baixando a inteligência artificial (uns 5 MB, usa internet)…');
+    $('aiBadge').textContent='IA: baixando…';
+    S.model=await cocoSsd.load({base:'lite_mobilenet_v2'});
+  }catch(e){
+    stopCamera();
+    $('aiBadge').textContent='IA: falhou ✗';
+    setStartMsg('Não consegui baixar a IA. Verifique a internet e recarregue a página (F5). Detalhe: '+((e&&e.message)||e),true);
+    $('startBtn').disabled=false;S.starting=false;
+    return;
+  }
+  $('aiBadge').textContent='IA: COCO-SSD ✓';
+  $('aiBadge').classList.add('ok');
+  $('startOverlay').style.display='none';
+  S.running=true;S.starting=false;
+  initAudio();
+  log('Sistema iniciado — procurando pessoas…');
+  loop();
+}
+
+/* ---------------- botões ---------------- */
+$('startBtn').addEventListener('click',start);
+$('switchCam').addEventListener('click',switchCam);
+$('snapBtn').addEventListener('click',function(){
+  if(!S.running){log('Inicie a câmera primeiro.','bad');return;}
+  const c=document.createElement('canvas');
+  c.width=overlay.width;c.height=overlay.height;
+  const x=c.getContext('2d');
+  x.drawImage(video,0,0,c.width,c.height);
+  x.drawImage(overlay,0,0);
+  const a=document.createElement('a');
+  a.download='epi-'+new Date().toISOString().replace(/[:.]/g,'-')+'.png';
+  a.href=c.toDataURL('image/png');
+  a.click();
+  log('Foto salva 📸');
+});
+$('testBeep').addEventListener('click',function(){initAudio();beep();log('Bip de teste 🔔');});
+$('soundBtn').addEventListener('click',function(){
+  S.sound=!S.sound;
+  $('soundBtn').textContent=S.sound?'🔊 Som: ligado':'🔇 Som: mudo';
+});
+$('resetBtn').addEventListener('click',function(){
+  S.tracks.clear();S.nextId=1;S.totalPassed=0;S.totalAlerts=0;
+  logEl.innerHTML='';
+  updatePanel();handleAlerts();
+  log('Contadores zerados');
+});
+$('sens').addEventListener('input',function(e){
+  const v=+e.target.value;
+  S.sens=0.15+(v/100)*0.4;   // 0.15 (aceita fácil) até 0.55 (bem exigente)
+  $('sensVal').textContent=v;
+});
+$('showBox').addEventListener('change',function(e){S.showBox=e.target.checked;});
+
+/* ---------------- verificação das bibliotecas ---------------- */
+window.addEventListener('load',function(){
+  S.cdnOk=(typeof tf!=='undefined')&&(typeof cocoSsd!=='undefined');
+  if(!S.cdnOk){
+    $('cdnWarn').style.display='block';
+    setStartMsg('Sem internet no momento: a IA não pôde ser baixada. Conecte-se e recarregue (F5).',true);
+  }
+  updatePanel();
+});
+})();
+</script>
+</body>
+</html>
