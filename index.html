@@ -21,6 +21,8 @@ h1{font-size:26px;margin:0}
 .stage.alerting{animation:flash 1s infinite}
 @keyframes flash{0%,100%{box-shadow:0 0 0 3px rgba(255,82,82,.9)}50%{box-shadow:0 0 0 8px rgba(255,82,82,.35)}}
 video{display:block;width:100%;background:#000}
+.stage.picking{cursor:crosshair}
+.stage.picking::after{content:'👆 clique no capacete';position:absolute;top:10px;left:50%;transform:translateX(-50%);background:rgba(34,211,238,.95);color:#06283b;font-weight:800;padding:8px 14px;border-radius:10px;z-index:6;font-size:14px}
 .stage.mirror video{transform:scaleX(-1)}
 #overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .banner{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:none;background:rgba(220,38,38,.96);color:#fff;font-weight:800;font-size:clamp(14px,2.2vw,22px);padding:10px 18px;border-radius:12px;animation:pulse 1s infinite;white-space:nowrap;z-index:3}
@@ -76,12 +78,12 @@ footer p{margin:4px 0}
       <div class="stage" id="stage">
         <video id="video" autoplay muted playsinline></video>
         <canvas id="overlay"></canvas>
-        <div class="banner" id="banner">⚠️ PESSOA SEM EPI — COLOQUE O CAPACETE!</div>
-        <div class="okchip" id="okChip">✓ Todo mundo com EPI</div>
+        <div class="banner" id="banner">⚠️ SEM CAPACETE — COLOQUE O CAPACETE!</div>
+        <div class="okchip" id="okChip">✓ Todos de capacete</div>
         <div class="start-overlay" id="startOverlay">
           <div class="start-card">
             <h2>Vamos começar!</h2>
-            <p>Fique de 1 a 3 metros da câmera. O app <b>conta as pessoas</b> que passam, verifica o <b>capacete</b> e o <b>colete</b> e <b>apita</b> quando alguém estiver sem EPI.</p>
+            <p>Fique de 1 a 3 metros da câmera. O app <b>conta as pessoas</b> que passam, verifica o <b>uso do capacete</b> (cabelo não conta!) e <b>apita</b> quando alguém estiver sem capacete. Se o seu capacete tiver cor fora do comum, clique em <b>🎯 Calibrar capacete</b> ou <b>👆 Apontar a cor</b> na barra abaixo do vídeo.</p>
             <button id="startBtn">▶ Ligar câmera e iniciar</button>
             <p class="hint" id="startMsg">A internet só é usada para baixar a IA ao abrir a página (uns 5 MB). Depois disso, toda a análise roda no seu computador — nenhuma imagem sai da máquina.</p>
             <div class="warnbox" id="cdnWarn">
@@ -93,14 +95,20 @@ footer p{margin:4px 0}
         </div>
       </div>
 
+      <div id="dbgBox" class="ctl" style="display:flex;width:100%;justify-content:flex-start"><b>🔬 Cabeça:</b>&nbsp;<span id="dbgTxt">—</span></div>
       <div class="stagebar">
+        <button id="calBtn">🎯 Calibrar capacete</button>
+        <button id="pickBtn">👆 Apontar a cor no vídeo</button>
+        <button id="calClear" disabled>🧹 Remover calibração</button>
+        <button id="dbgBtn">🔬 Diagnóstico: ligado</button>
         <button id="switchCam">🔄 Trocar câmera</button>
         <button id="snapBtn">📸 Salvar foto</button>
         <button id="testBeep">🔔 Testar bip</button>
         <button id="soundBtn">🔊 Som: ligado</button>
-        <label class="ctl">Rigor do capacete
-          <input type="range" id="sens" min="0" max="100" value="50">
-          <span id="sensVal">50</span>
+        <label class="ctl"><span id="sensLbl">Rigor do capacete</span>
+          <input type="range" id="sens" min="0" max="100" value="51">
+          <span id="sensVal">51</span>
+          <span id="sensEff">· limite 30%</span>
         </label>
         <label class="ctl"><input type="checkbox" id="showBox" checked> mostrar área da cabeça analisada</label>
       </div>
@@ -110,7 +118,7 @@ footer p{margin:4px 0}
       <div class="cards">
         <div class="card"><div class="num" id="cNa">0</div><div class="lbl">Na cena agora</div></div>
         <div class="card"><div class="num" id="cPass">0</div><div class="lbl">Passaram no total</div></div>
-        <div class="card bad"><div class="num" id="cAlert">0</div><div class="lbl">Alertas sem EPI</div></div>
+        <div class="card bad"><div class="num" id="cAlert">0</div><div class="lbl">Alertas sem capacete</div></div>
       </div>
 
       <div class="box">
@@ -123,18 +131,19 @@ footer p{margin:4px 0}
         <summary>📖 Como o app funciona (para explicar aos jurados)</summary>
         <ol>
           <li><b>IA localiza as pessoas:</b> o modelo COCO-SSD (TensorFlow.js) roda dentro do navegador e desenha a caixa de cada pessoa detectada.</li>
-          <li><b>Análise do capacete:</b> recortamos a região da <b>cabeça</b> e contamos, no espaço de cores HSV, a proporção de pixels com cores típicas de capacete (amarelo, branco, laranja, vermelho, azul). Acima do limite configurável = com capacete.</li>
-          <li><b>Colete refletivo:</b> mesma análise no <b>tronco</b>, procurando amarelo/verde-limão/laranja forte.</li>
+          <li><b>Análise do capacete:</b> recortamos a região da <b>cabeça</b> — testando 3 regiões candidatas e escolhendo a de maior proporção de cor — clareando a região automaticamente se o ambiente for escuro — e contamos, no espaço de cores HSV, os pixels com cores típicas de capacete (amarelo, branco, laranja, vermelho, azul). A porcentagem detectada aparece na etiqueta; acima do limite configurável = com capacete.</li>
+          <li><b>🎯 Calibração pessoal:</b> capacete de cor fora do padrão? O botão "Calibrar capacete" aprende a cor do SEU capacete em ~1 segundo (olhando só o topo da cabeça, ignorando rosto e cabelo) e passa a usá-la na detecção — fica salva mesmo fechando a página.</li>
+          <li><b>Só o capacete interessa:</b> cabelo, rosto e fundo são explicitamente bloqueados na análise — e o veredito exige que DUAS faixas da cabeça confirmem a cor (impossível confundir com parede atrás da pessoa).</li>
           <li><b>Contagem:</b> um rastreador associa cada pessoa de um quadro à mesma pessoa do quadro anterior; cada pessoa nova soma 1 no total — sem contar a mesma pessoa duas vezes.</li>
           <li><b>Bip de alerta:</b> se alguém fica sem capacete, o app apita repetidamente (Web Audio API) até a pessoa colocar o EPI.</li>
         </ol>
-        <p><b>Limitações honestas</b> (jurados adoram isso!): óculos e luvas são pequenos demais para a análise por cor desta versão — o app verifica <b>capacete</b> e <b>colete</b>. Capacetes pretos ou muito escuros podem não ser reconhecidos.</p>
+        <p><b>Limitações honestas</b> (jurados adoram isso!): óculos e luvas são pequenos demais para a análise por cor desta versão — o app verifica <b>capacete</b> e <b>colete</b>. Capacete preto tem a mesma cor do cabelo escuro — a paleta preta usa janela estreita de brilho, bloqueia tons quentes de cabelo e só analisa o topo da cabeça. Se der confusão, use <b>👆 Apontar a cor</b> clicando no TOPO do capacete.</p>
       </details>
     </aside>
   </div>
 
   <footer>
-    <p>💡 Dicas: ambientes bem iluminados funcionam melhor · capacetes amarelos, brancos, laranjas, vermelhos ou azuis são reconhecidos com mais facilidade · sem Wi-Fi na feira? Use o 4G/5G do celular como hotspot só nos primeiros segundos (download da IA).</p>
+    <p>💡 Dicas: ambientes bem iluminados funcionam melhor · capacetes amarelos, brancos, laranjas, vermelhos ou azuis são reconhecidos com mais facilidade · capacete de outra cor? Use <b>🎯 Calibrar capacete</b> com ele na cabeça · sem Wi-Fi na feira? Use o 4G/5G do celular como hotspot só nos primeiros segundos (download da IA).</p>
     <p>🔒 Privacidade: as imagens não saem do computador — todo o processamento é local.</p>
   </footer>
 </div>
@@ -152,10 +161,122 @@ const wctx=work.getContext('2d',{willReadFrequently:true});
 
 const S={
   model:null,running:false,starting:false,stream:null,
-  facing:'user',mirror:true,sound:true,sens:0.35,showBox:true,
+  facing:'user',mirror:true,sound:true,sens:0.30,showBox:true,
   tracks:new Map(),nextId:1,totalPassed:0,totalAlerts:0,lastBeep:0,errLogged:false,
-  cdnOk:false,audio:null
+  cdnOk:false,audio:null,
+  calib:null,calibRatio:0.25,calibrating:null,picking:false,dbg:true,_dbgTick:0
 };
+/* ---------- calibração do capacete (aprende a cor real) ---------- */
+const CALIB_VERSION=2; // v2: ignora cabelo na calibração
+function saveCalib(){
+  try{localStorage.setItem('epiCalib',JSON.stringify({calib:S.calib,ratio:S.calibRatio,v:CALIB_VERSION}));}catch(e){}
+}
+function loadCalib(){
+  try{
+    const j=JSON.parse(localStorage.getItem('epiCalib')||'null');
+    /* versões antigas aprenderam a cor misturada com o cabelo — ignorar */
+    if(j&&j.calib&&j.v===CALIB_VERSION){S.calib=j.calib;S.calibRatio=j.ratio||0.25;return true;}
+  }catch(e){}
+  return false;
+}
+/* aprende a cor exata de um ponto do vídeo (clique do usuário) */
+function learnColorAt(cx,cy){
+  const W=work.width,H=work.height;
+  const R=8;                                   // patch 16x16
+  let x=Math.round(cx),y=Math.round(cy);
+  x=Math.max(R,Math.min(W-1-R,x));y=Math.max(R,Math.min(H-1-R,y));
+  let d;
+  try{d=wctx.getImageData(x-R,y-R,R*2,R*2).data;}catch(e){return false;}
+  const C={sx:0,sy:0,ss:0,sv:0,n:0,rej:0};
+  for(let i=0;i<d.length;i+=4){
+    const r=d[i],g=d[i+1],b=d[i+2];
+    if(isSkin(r,g,b)){C.rej++;continue;}
+    const c=rgb2hsv(r,g,b);
+    if(r>=g&&g>=b&&c.v<0.48&&c.s>0.06&&c.s<0.85&&c.h>=3&&c.h<=42){C.rej++;continue;} // cabelo
+    const rad=c.h*Math.PI/180;
+    C.sx+=Math.cos(rad);C.sy+=Math.sin(rad);C.ss+=c.s;C.sv+=c.v;C.n++;
+  }
+  if(C.n<40)return false;                      // patch caiu em rosto/cabelo
+  const h=((Math.atan2(C.sy,C.sx)*180/Math.PI)+360)%360;
+  return{h:h,s:C.ss/C.n,v:C.sv/C.n,neutral:(C.ss/C.n)<0.22};
+}
+/* instala a cor aprendida como calibração oficial */
+function applyLearnedColor(K){
+  S.calib=K;
+  /* mede a cobertura da cor agora para sugerir o limite */
+  let ratio=0.34;
+  S.tracks.forEach(function(t){
+    if(t.missed===0&&t.headBox){
+      const r=sampleRegion(t.headBox[0],t.headBox[1],t.headBox[2],t.headBox[3]);
+      if(r)ratio=Math.max(ratio,r.customRatio||0);
+    }
+  });
+  S.calibRatio=Math.min(0.47,Math.max(0.18,ratio*0.5));
+  S.tracks.forEach(function(t){t.helmetVotes=[];t.violated=false;});
+  saveCalib();
+  updateCalBtns();
+  syncSliderFromState();
+  log('👆 Cor aprendida: matiz '+Math.round(K.h)+'°, saturação '+Math.round(K.s*100)+'%, brilho '+Math.round(K.v*100)+'%'+
+      (K.neutral?' (neutro — branco/preto/cinza)':'')+' · limite '+(S.calibRatio*100).toFixed(0)+'%');
+  if(K.neutral&&K.v<0.5)
+    log('⚠️ Paleta preta ativa: o cabelo escuro tem a mesma cor. Para máxima precisão, aponte 👆 no TOPO do capacete.');
+}
+function collectCalib(box){
+  try{
+    /* o capacete fica no TOPO da região da cabeça; cabelo/rosto embaixo */
+    const hLim=Math.max(2,Math.floor(box[3]*0.6));
+    const d=wctx.getImageData(box[0],box[1],box[2],hLim).data;
+    const C=S.calibrating;
+    for(let i=0;i<d.length;i+=8){          // amostra a cada 2 pixels
+      const r=d[i],g=d[i+1],b=d[i+2];
+      if(isSkin(r,g,b))continue;           // ignora rosto
+      const c=rgb2hsv(r,g,b);
+      if(r>=g&&g>=b&&c.v<0.48&&c.s>0.06&&c.s<0.85&&c.h>=3&&c.h<=42)continue; // ignora cabelo
+      const rad=c.h*Math.PI/180;
+      C.sx+=Math.cos(rad);C.sy+=Math.sin(rad);C.ss+=c.s;C.sv+=c.v;C.n++;
+    }
+  }catch(e){}
+}
+function finalizeCalib(){
+  const C=S.calibrating;
+  S.calibrating=null;
+  if(!C||C.n<120){log('Não consegui calibrar — fique bem visível, de frente, com o capacete na cabeça.','bad');updateCalBtns();return;}
+  const meanH=((Math.atan2(C.sy,C.sx)*180/Math.PI)+360)%360;
+  const meanS=C.ss/C.n,meanV=C.sv/C.n;
+  S.calib={h:meanH,s:meanS,v:meanV,neutral:meanS<0.22};
+  /* mede a cobertura agora para definir o limite automático */
+  let ratio=0.40;
+  S.tracks.forEach(function(t){
+    if(t.missed===0&&t.headBox){
+      const r=sampleRegion(t.headBox[0],t.headBox[1],t.headBox[2],t.headBox[3]);
+      if(r)ratio=Math.max(ratio,r.customRatio||0);
+    }
+  });
+  /* rigor auto-calibrado: metade do medido, sem ficar nem frouxo nem rígido demais */
+  S.calibRatio=Math.min(0.47,Math.max(0.18,ratio*0.5));
+  S.tracks.forEach(function(t){t.helmetVotes=[];t.violated=false;});
+  saveCalib();
+  updateCalBtns();
+  log('🎯 Capacete calibrado! Cor aprendida: matiz '+Math.round(meanH)+'°'+
+      (S.calib.neutral?' (neutro — branco/preto/cinza)':'')+' · limite automático '+(S.calibRatio*100).toFixed(0)+'%');
+  if(S.calib.neutral&&meanV<0.5)
+    log('⚠️ Capacete preto tem a MESMA cor do cabelo escuro. Se alertar alguém sem capacete, use 👆 Apontar a cor e clique no TOPO do capacete.');
+}
+function updateCalBtns(){
+  const b=$('calBtn'),c=$('calClear'),pk=$('pickBtn');
+  if(!b||!c)return;
+  if(S.picking){pk.textContent='👆 Clicando… (Esc cancela)';pk.disabled=true;}
+  else{pk.textContent='👆 Apontar a cor no vídeo';pk.disabled=false;}
+  if(S.calibrating){b.textContent='⏳ Calibrando…';b.disabled=true;}
+  else{b.textContent=S.calib?'🎯 Recalibrar capacete':'🎯 Calibrar capacete';b.disabled=!S.picking;}
+  c.disabled=!S.calib;
+  /* mostra a cor aprendida no próprio botão */
+  if(S.calib&&!S.calib.neutral){
+    const col='hsl('+Math.round(S.calib.h)+','+Math.round(Math.min(1,S.calib.s)*100)+'%,'+Math.round(Math.max(0.25,S.calib.v)*80)+'%)';
+    b.style.boxShadow='inset 0 -6px 0 '+col;
+  }else{b.style.boxShadow='';}
+  if(typeof syncSliderFromState==='function')syncSliderFromState();
+}
 
 /* ---------------- registro de eventos ---------------- */
 const logEl=$('log');
@@ -205,20 +326,72 @@ function rgb2hsv(r,g,b){
   return{h:h,s:mx===0?0:d/mx,v:mx};
 }
 /* retorna {helmet,vest} para um pixel */
-function classifyPixel(r,g,b){
-  const c=rgb2hsv(r,g,b);
-  if(c.s<0.16&&c.v>0.74)return{helmet:true,vest:false};        // branco (capacete)
-  if(c.s>0.45&&c.v>0.45){
-    if(c.h>=45&&c.h<160)return{helmet:true,vest:true};         // amarelo / verde-limão
-    if(c.h>=160&&c.h<200)return{helmet:false,vest:true};       // verde (colete)
-    if(c.h>=200&&c.h<262)return{helmet:true,vest:false};       // azul (capacete)
-    if(c.h>=335||c.h<14)return{helmet:true,vest:true};         // vermelho
-    if(c.h>=14&&c.h<45&&c.s>0.60&&c.v>0.52)return{helmet:true,vest:true}; // laranja forte
+function classifyPixel(r,g,b,boost,whiteThr){
+  boost=boost||1;
+  /* regra do BRANCO no pixel ORIGINAL (sem clareamento): paredes cinza-claras
+     em cenas escuras não viram "capacete". Branco quente (lâmpada) exige
+     brilho muito alto. */
+  const c0=rgb2hsv(r,g,b);
+  const spread0=Math.max(r,g,b)-Math.min(r,g,b);
+  /* BRANCO ADAPTATIVO: whiteThr vem de sampleRegion (média da região + margem).
+     Capacete branco em qualquer luz é detectado; parede cinza (brilho ≈ média
+     da própria região) fica abaixo do limite. Em cena escura, usa o pixel
+     clareado com teto de segurança. */
+  const wt=(typeof whiteThr==='number'&&whiteThr>0)?whiteThr:0.72;
+  if(c0.s<0.20&&spread0<40&&c0.v>=wt)return{helmet:true,vest:false};
+  if(boost>1&&c0.s<0.18&&Math.min(1,c0.v*boost)>=0.85)return{helmet:true,vest:false};
+  /* proteção TOM DE PELE: rosto com luz forte/estourado fica amarelado
+     (r≈g altos, b baixo) e não pode entrar na faixa do capacete amarelo. */
+  if(r>g&&g>b&&c0.h>=8&&c0.h<=55&&(g-b)<90&&(r-g)<75&&r>70)return{helmet:false,vest:false};
+  /* proteção CABELO: castanho/ruivo/escuro é quente (matiz 5-50°) e escuro —
+     nunca pode ser laranja/vermelho/amarelo de capacete */
+  if(r>=g&&g>=b&&c0.v<0.48&&c0.s>0.06&&c0.s<0.85&&c0.h>=3&&c0.h<=42)return{helmet:false,vest:false};
+  /* cores saturadas: avaliadas com clareamento (preserva o matiz) */
+  const R=Math.min(255,r*boost),G=Math.min(255,g*boost),B=Math.min(255,b*boost);
+  const c=rgb2hsv(R,G,B);
+  const spread=Math.max(R,G,B)-Math.min(R,G,B);
+  if(c.s>0.45&&c.v>0.35){
+    /* amarelo: azul TEM que ser quase zero (cabelo loiro tem b médio) */
+    if(c.h>=40&&c.h<95&&((G-B)>=140||((G-B)>=110&&c.s>0.72)))return{helmet:true,vest:true};
+    if(c.h>=95&&c.h<195)return{helmet:false,vest:true};    // verde (colete) — NÃO é capacete
+    if(c.h>=195&&c.h<265&&c.s>0.30)return{helmet:true,vest:false}; // azul (capacete)
+    /* vermelho: bem saturado e não muito escuro no original (ruivo não pega) */
+    if(c.h>=320||c.h<16){
+      if(c.s>0.70&&c0.v>=0.30)return{helmet:true,vest:true};
+      return{helmet:false,vest:false};
+    }
+    /* laranja verdadeiro: saturação altíssima (cabelo ruivo fica abaixo) */
+    if(c.h>=16&&c.h<45&&c.s>0.75&&G<R*0.55)return{helmet:true,vest:true};
   }
   return{helmet:false,vest:false};
 }
+/* pele (usada na calibração para não aprender a cor do rosto) */
+function isSkin(r,g,b){
+  /* (g-b) pequeno separa pele de amarelos/laranjas de capacete
+     (pele: g-b ~20-90; amarelo: g-b >120) */
+  return r>g&&g>b&&r>70&&(r-b)>12&&(r-g)<95&&(g-b)<90;
+}
+/* casa um pixel com a cor aprendida no botão 🎯 Calibrar */
+function customMatch(r,g,b,c){
+  const K=S.calib;
+  if(!K)return false;
+  const spread=Math.max(r,g,b)-Math.min(r,g,b);
+  if(isSkin(r,g,b))return false;                       // nunca conta rosto
+  if(r>=g&&g>=b&&c.v<0.48&&c.s>0.06&&c.s<0.85&&c.h>=3&&c.h<=42)return false; // nunca conta cabelo escuro
+  if(K.neutral){
+    if(K.v>0.5)return c.v>0.60&&c.s<0.30&&spread<36;   // capacete branco aprendido
+    /* PALETA PRETA: capacete preto e cabelo escuro são a mesma cor —
+       cabelo é quente (r>g>b com saturação); plástico preto é neutro/frio */
+    if(r>=g&&g>=b&&c.s>0.06&&c.s<0.85&&c.h>=3&&c.h<=42)return false;
+    return Math.abs(c.v-K.v)<=0.14&&c.s<0.22;
+  }
+  let dh=Math.abs(c.h-K.h);
+  if(dh>180)dh=360-dh;
+  /* 45% proporcional: tolera sombra da aba e clarão sem abrir para cabelo */
+  return dh<=32&&c.s>=Math.max(0.13,K.s*0.45)&&c.v>=Math.max(0.13,K.v*0.45);
+}
 /* amostra uma região do frame e devolve proporção de cores de EPI */
-function sampleRegion(x,y,w,h){
+function sampleRegion(x,y,w,h,skipTop){
   const W=work.width,H=work.height;
   x=Math.max(0,Math.min(W-1,Math.round(x)));
   y=Math.max(0,Math.min(H-1,Math.round(y)));
@@ -226,18 +399,57 @@ function sampleRegion(x,y,w,h){
   h=Math.max(2,Math.min(H-y,Math.round(h)));
   let img;
   try{img=wctx.getImageData(x,y,w,h).data;}catch(e){return null;}
-  let total=0,helmet=0,vest=0;
   const step=3;
-  for(let py=0;py<h;py+=step){
+  /* pula o topo da região: quando a caixa é maior que a cabeça, a margem
+     acima (parede/fundo) se concentra aí e não pode virar "capacete" */
+  const y0=Math.floor(h*(skipTop||0));
+  /* passa 1: brilho médio da região — se estiver escuro, clareamos os pixels.
+     Multiplicar os 3 canais igualmente preserva o matiz (a "cor"). */
+  let sum=0,n=0;
+  for(let py=y0;py<h;py+=step){
     for(let px=0;px<w;px+=step){
       const i=(py*w+px)*4;
-      const c=classifyPixel(img[i],img[i+1],img[i+2]);
+      sum+=Math.max(img[i],img[i+1],img[i+2])/255;n++;
+    }
+  }
+  const avg=sum/Math.max(1,n);
+  const boost=avg<0.80?Math.min(1.7,0.80/avg):1;
+
+  let total=0,helmet=0,vest=0,custom=0;
+  for(let py=y0;py<h;py+=step){
+    for(let px=0;px<w;px+=step){
+      const i=(py*w+px)*4;
+      const r=img[i],g=img[i+1],b=img[i+2];
+      const c=classifyPixel(r,g,b,boost);
       total++;
       if(c.helmet)helmet++;
       if(c.vest)vest++;
+      if(S.calib){
+        const rb=Math.min(255,r*boost),gb=Math.min(255,g*boost),bb=Math.min(255,b*boost);
+        if(customMatch(rb,gb,bb,rgb2hsv(rb,gb,bb)))custom++;
+      }
     }
   }
-  return{helmetRatio:total?helmet/total:0,vestRatio:total?vest/total:0,box:[x,y,w,h]};
+  return{helmetRatio:total?helmet/total:0,vestRatio:total?vest/total:0,
+         customRatio:total?custom/total:0,box:[x,y,w,h]};
+}
+/* composição de cores da região da cabeça — alimenta o HUD 🔬 */
+function headStats(box){
+  try{
+    const d=wctx.getImageData(box[0],box[1],box[2],box[3]).data;
+    let hel=0,cus=0,skin=0,hair=0,tot=0;
+    for(let i=0;i<d.length;i+=12){
+      const r=d[i],g=d[i+1],b=d[i+2];
+      const c=classifyPixel(r,g,b,1);
+      tot++;
+      if(c.helmet){hel++;continue;}
+      if(S.calib&&customMatch(r,g,b,rgb2hsv(r,g,b))){cus++;continue;}
+      if(isSkin(r,g,b)){skin++;continue;}
+      if(r>=g&&g>=b&&c.v<0.48&&c.s>0.06&&c.s<0.85&&c.h>=3&&c.h<=42)hair++;
+    }
+    if(!tot)return null;
+    return{helmet:hel/tot,custom:cus/tot,skin:skin/tot,hair:hair/tot};
+  }catch(e){return null;}
 }
 function majority(v){
   let y=0;
@@ -245,18 +457,40 @@ function majority(v){
   return y>=v.length/2;
 }
 function analyzeTrack(t){
-  const head=sampleRegion(t.x+t.w*0.22,t.y,t.w*0.56,t.h*0.20);
-  if(!head)return;
-  t.headBox=head.box;
-  t.helmetVotes.push(head.helmetRatio>=S.sens);
-  if(t.helmetVotes.length>7)t.helmetVotes.shift();
-  t.helmet=majority(t.helmetVotes);
-  const torso=sampleRegion(t.x,t.y+t.h*0.26,t.w,t.h*0.34);
-  if(torso){
-    t.vestVotes.push(torso.vestRatio>=0.20);
-    if(t.vestVotes.length>7)t.vestVotes.shift();
-    t.vest=majority(t.vestVotes);
+  /* A cabeça pode ficar em posições diferentes da caixa (pessoas próximas/longe,
+     corte no topo da tela etc.). Testamos 3 regiões candidatas e usamos a que
+     tiver a maior proporção de cor de capacete — evita o falso "sem EPI". */
+  const cands=[
+    [t.x+t.w*0.25, t.y,             t.w*0.50, t.h*0.14],
+    [t.x+t.w*0.20, t.y+t.h*0.02,    t.w*0.60, t.h*0.20],
+    [t.x+t.w*0.12, t.y+t.h*0.04,    t.w*0.76, t.h*0.26]
+  ];
+  /* paleta preta ativa? cabelo escuro = cor do capacete: restringe ao topo */
+  const blackCalib=!!(S.calib&&S.calib.neutral&&S.calib.v<0.5);
+  const candList=blackCalib?cands.slice(0,2):cands;
+  /* mede TODAS as faixas e EXIGE CONSENSO de 2: capacete de verdade acende
+     as faixas de cima E a de baixo; parede atrás da cabeça só acende a de cima */
+  const ms=[];let best=null,bestScore=0;
+  const skips=[0.25,0.15,0.25];
+  for(let i=0;i<candList.length;i++){
+    const r=sampleRegion(candList[i][0],candList[i][1],candList[i][2],candList[i][3],skips[i]||0.25);
+    if(!r)continue;
+    const m=Math.max(r.helmetRatio,S.calib?(r.customRatio||0):0);
+    ms.push(m);
+    if(!best||m>bestScore){best=r;bestScore=m;}
   }
+  if(!best)return;
+  t.headBox=best.box;
+  ms.sort(function(a,b){return b-a;});
+  const m1=ms[0]||0,m2=ms[1]||0;
+  const lim=S.calib?S.calibRatio:S.sens;
+  /* CONSENSO: melhor faixa acima do limite E segunda faixa confirmando */
+  let ok=(m1>=lim)&&(m2>=Math.max(0.12,m1*0.20));
+  let ratio=m1;
+  t.headRatio=ratio;
+  t.helmetVotes.push(ok);
+  if(t.helmetVotes.length>5)t.helmetVotes.shift();
+  t.helmet=majority(t.helmetVotes);
 }
 
 /* ---------------- rastreamento + contagem ---------------- */
@@ -287,7 +521,7 @@ function updateTracks(dets){
     S.tracks.set(S.nextId,{
       id:S.nextId++,x:d.x,y:d.y,w:d.w,h:d.h,cx:d.cx,cy:d.cy,score:d.score,
       age:1,missed:0,counted:false,violated:false,
-      helmet:undefined,vest:undefined,helmetVotes:[],vestVotes:[],headBox:null
+      helmet:undefined,vest:undefined,helmetVotes:[],vestVotes:[],headBox:null,badStreak:0
     });
   });
   S.tracks.forEach(function(t){
@@ -295,7 +529,12 @@ function updateTracks(dets){
   });
   S.tracks.forEach(function(t){
     if(!t.counted&&t.age>=3){t.counted=true;S.totalPassed++;log('Pessoa #'+t.id+' entrou na cena');}
-    if(!t.violated&&t.age>=6&&t.helmet===false){t.violated=true;S.totalAlerts++;log('Pessoa #'+t.id+' está SEM capacete!','bad');}
+    if(t.counted&&t.missed===0&&t.helmet===false)t.badStreak++;else t.badStreak=0;
+    if(!t.violated&&t.badStreak>=4){
+      t.violated=true;S.totalAlerts++;
+      const lim=Math.round((S.calib?S.calibRatio:S.sens)*100);
+      log('Pessoa #'+t.id+' SEM capacete — leitura máx '+Math.round((t.headRatio||0)*100)+'%, limite '+lim+'%','bad');
+    }
     if(t.missed>8)S.tracks.delete(t.id);
   });
 }
@@ -304,15 +543,26 @@ function updateTracks(dets){
 function offenders(){
   const out=[];
   S.tracks.forEach(function(t){
-    if(t.counted&&t.missed===0&&t.helmet===false)out.push(t);
+    if(t.counted&&t.missed===0&&t.helmet===false&&t.badStreak>=3)out.push(t);
   });
   return out;
 }
 function handleAlerts(){
+  const banner=$('banner');
+  if(S.calibrating){
+    banner.textContent='🎯 Calibrando capacete… leitura '+Math.min(S.calibrating.frames+1,8)+'/8 — fique de frente com o capacete na cabeça';
+    banner.style.display='block';
+    banner.style.background='rgba(22,101,52,.96)';
+    stage.classList.remove('alerting');
+    $('okChip').style.display='none';
+    return;
+  }
+  banner.textContent='⚠️ SEM CAPACETE — COLOQUE O CAPACETE!';
+  banner.style.background='rgba(220,38,38,.96)';
   const off=offenders();
   let anyone=false;
   S.tracks.forEach(function(t){if(t.missed===0)anyone=true;});
-  $('banner').style.display=off.length?'block':'none';
+  banner.style.display=off.length?'block':'none';
   stage.classList.toggle('alerting',off.length>0);
   $('okChip').style.display=(anyone&&off.length===0)?'block':'none';
   const now=performance.now();
@@ -329,6 +579,7 @@ function draw(){
     if(t.missed>0)return;
     const sem=t.helmet===false,pend=t.helmet===undefined;
     const col=pend?'#fbbf24':(sem?'#ff4d4f':'#22c55e');
+    /* só capacete interessa: cabelo nunca conta */
     const x=S.mirror?W-(t.x+t.w):t.x;
     octx.lineWidth=Math.max(3,W*0.004);
     octx.strokeStyle=col;
@@ -343,10 +594,10 @@ function draw(){
       octx.strokeRect(mx,hb[1],hb[2],hb[3]);
       octx.restore();
     }
-    const l1=sem?('#'+t.id+' SEM EPI ⚠️'):(pend?('#'+t.id+' analisando…'):('#'+t.id+' COM EPI ✓'));
+    const l1=sem?('#'+t.id+' SEM CAPACETE ⚠️'):(pend?('#'+t.id+' analisando…'):('#'+t.id+' COM CAPACETE ✓'));
     const st1=t.helmet===undefined?'…':(t.helmet?'✓':'✗');
-    const st2=t.vest?'✓':'✗';
-    const l2='capacete '+st1+' · colete '+st2;
+    const pct=(t.headRatio!=null)?Math.round(t.headRatio*100)+'%':'…';
+    const l2='capacete '+st1+' '+pct;
     octx.font='bold '+fs+'px system-ui,Segoe UI,Arial';
     const w1=octx.measureText(l1).width;
     octx.font=Math.round(fs*0.8)+'px system-ui,Segoe UI,Arial';
@@ -383,9 +634,22 @@ async function loop(){
       wctx.drawImage(video,0,0,work.width,work.height);
       const preds=await S.model.detect(video,10,0.5);
       updateTracks(preds.filter(function(p){return p.class==='person'&&p.score>=0.5;}));
+      /* durante a calibração, o alvo é a maior pessoa visível */
+      S._big=null;
+      if(S.calibrating){
+        S.tracks.forEach(function(t){
+          if(t.missed===0&&(!S._big||t.w*t.h>S._big.w*S._big.h))S._big=t;
+        });
+      }
       S.tracks.forEach(function(t){if(t.missed===0)analyzeTrack(t);});
+      if(S.calibrating&&S._big&&S._big.headBox){
+        collectCalib(S._big.headBox);
+        S.calibrating.frames++;
+        if(S.calibrating.frames>=8)finalizeCalib();
+      }
       draw();
       updatePanel();
+      updateDebugHud();
       handleAlerts();
     }
   }catch(e){
@@ -493,6 +757,44 @@ async function start(){
 /* ---------------- botões ---------------- */
 $('startBtn').addEventListener('click',start);
 $('switchCam').addEventListener('click',switchCam);
+$('calBtn').addEventListener('click',function(){
+  if(!S.running){log('Inicie a câmera primeiro, depois calibre.','bad');return;}
+  if(S.calibrating)return;
+  S.calibrating={frames:0,sx:0,sy:0,ss:0,sv:0,n:0};
+  updateCalBtns();
+  log('🎯 Calibrando: fique de frente, só você, com o capacete na cabeça…');
+});
+$('pickBtn').addEventListener('click',function(){
+  if(!S.running){log('Inicie a câmera primeiro, depois aponte a cor.','bad');return;}
+  S.picking=!S.picking&&!S.calibrating;
+  stage.classList.toggle('picking',S.picking);
+  updateCalBtns();
+  if(S.picking)log('👆 Clique EM CIMA DO SEU CAPACETE no vídeo (Esc cancela).');
+});
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape'&&S.picking){S.picking=false;stage.classList.remove('picking');updateCalBtns();log('Apontar cor cancelado.');}
+});
+stage.addEventListener('click',function(e){
+  if(!S.picking||!S.running)return;
+  const rect=overlay.getBoundingClientRect();
+  if(!rect.width)return;
+  const fx=(e.clientX-rect.left)/rect.width;
+  const fy=(e.clientY-rect.top)/rect.height;
+  /* vídeo espelhado? converte para a coordenada real do frame */
+  const cx=(S.mirror?1-fx:fx)*work.width;
+  const cy=fy*work.height;
+  const K=learnColorAt(cx,cy);
+  S.picking=false;stage.classList.remove('picking');
+  if(!K){log('Não consegui ler uma cor limpa nesse ponto — clique bem no centro do capacete.','bad');updateCalBtns();return;}
+  applyLearnedColor(K);
+});
+$('calClear').addEventListener('click',function(){
+  S.calib=null;S.calibRatio=0.25;S.picking=false;stage.classList.remove('picking');
+  try{localStorage.removeItem('epiCalib');}catch(e){}
+  S.tracks.forEach(function(t){t.helmetVotes=[];});
+  updateCalBtns();
+  log('Calibração removida — voltando para o dicionário padrão de cores.');
+});
 $('snapBtn').addEventListener('click',function(){
   if(!S.running){log('Inicie a câmera primeiro.','bad');return;}
   const c=document.createElement('canvas');
@@ -517,12 +819,43 @@ $('resetBtn').addEventListener('click',function(){
   updatePanel();handleAlerts();
   log('Contadores zerados');
 });
+/* ---- rigor: um slider que controla o modo ativo ---- */
+function sliderToRigor(v){return 0.12+(v/100)*0.35;}   // 0.12 (aceita fácil) a 0.47 (rigoroso)
+function rigorToSlider(r){return Math.max(0,Math.min(100,Math.round((r-0.12)/0.35*100)));}
+function updateSensEff(){
+  const eff=S.calib?S.calibRatio:S.sens;
+  $('sensEff').textContent='· limite '+Math.round(eff*100)+'%';
+  $('sensLbl').textContent=S.calib?'Rigor (capacete calibrado)':'Rigor do capacete';
+}
+function syncSliderFromState(){
+  const v=rigorToSlider(S.calib?S.calibRatio:S.sens);
+  $('sens').value=v;$('sensVal').textContent=v;
+  updateSensEff();
+}
 $('sens').addEventListener('input',function(e){
   const v=+e.target.value;
-  S.sens=0.15+(v/100)*0.4;   // 0.15 (aceita fácil) até 0.55 (bem exigente)
   $('sensVal').textContent=v;
+  if(S.calib){S.calibRatio=sliderToRigor(v);saveCalib();}  // ajusta e salva a calibração
+  else{S.sens=sliderToRigor(v);}                            // ajusta o dicionário de cores
+  updateSensEff();
 });
 $('showBox').addEventListener('change',function(e){S.showBox=e.target.checked;});
+$('dbgBtn').addEventListener('click',function(){
+  S.dbg=!S.dbg;
+  $('dbgBtn').textContent='🔬 Diagnóstico: '+(S.dbg?'ligado':'desligado');
+  $('dbgBox').style.display=S.dbg?'flex':'none';
+});
+/* atualiza o HUD a cada ~6 quadros */
+function updateDebugHud(){
+  if(!S.dbg||S._dbgTick++%6!==0)return;
+  let big=null;
+  S.tracks.forEach(function(t){if(t.missed===0&&t.headBox&&(!big||t.w*t.h>big.w*big.h))big=t;});
+  const el=$('dbgTxt');
+  if(!big){el.textContent='nenhuma pessoa visível';return;}
+  const st=headStats(big.headBox);
+  if(!st){el.textContent='—';return;}
+  el.innerHTML='capacete <b>'+(st.helmet*100).toFixed(0)+'%</b> · calibrado <b>'+(st.custom*100).toFixed(0)+'%</b> · pele '+(st.skin*100).toFixed(0)+'% · cabelo '+(st.hair*100).toFixed(0)+'% · resto '+((1-st.helmet-st.custom-st.skin-st.hair)*100).toFixed(0)+'% → limite '+(S.calib?S.calibRatio*100:S.sens*100).toFixed(0)+'%';
+}
 
 /* ---------------- verificação das bibliotecas ---------------- */
 window.addEventListener('load',function(){
@@ -531,6 +864,8 @@ window.addEventListener('load',function(){
     $('cdnWarn').style.display='block';
     setStartMsg('Sem internet no momento: a IA não pôde ser baixada. Conecte-se e recarregue (F5).',true);
   }
+  if(loadCalib()){log('🎯 Calibração de capacete salva foi carregada.');}
+  updateCalBtns();
   updatePanel();
 });
 })();
