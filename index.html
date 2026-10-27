@@ -244,11 +244,11 @@
       </div>
 
       <div class="epi-row">
-        <div class="epi-box"><div class="t">Capacete</div>
+        <div class="epi-box" data-kind="helmet"><div class="t">Capacete</div>
           <div class="n"><span class="yes" id="helmetYes">0</span><small> / </small><span class="no" id="helmetNo">0</span></div></div>
-        <div class="epi-box"><div class="t">Óculos</div>
+        <div class="epi-box" data-kind="goggles"><div class="t">Óculos</div>
           <div class="n"><span class="yes" id="gogglesYes">0</span><small> / </small><span class="no" id="gogglesNo">0</span></div></div>
-        <div class="epi-box"><div class="t">Jaleco</div>
+        <div class="epi-box" data-kind="coat"><div class="t">Jaleco</div>
           <div class="n"><span class="yes" id="coatYes">0</span><small> / </small><span class="no" id="coatNo">0</span></div></div>
       </div>
 
@@ -490,8 +490,31 @@
   }
 
   /* ------------------------ zonas anatômicas da pessoa --------------------- */
-  /* frações relativas ao box da pessoa (x, y, w, h).
-     Ajustadas para pessoa em pé, de corpo inteiro ou tronco acima.          */
+  /* As frações relativas ao box NÃO podem ser fixas: a cabeça ocupa ~20% da
+     altura de uma pessoa de corpo inteiro, mas ~45% quando o enquadramento é
+     só cabeça e ombros (pessoa perto da câmera). Por isso a altura da zona da
+     cabeça é derivada da LARGURA da pessoa (a cabeça tem cerca de 0,95 largura
+     de ombro) e depois limitada ao box.                                       */
+  const HEAD_WIDTH_FACTOR = 0.95;   // altura da cabeça ≈ 0,95 × largura da pessoa
+  const HEAD_MIN = 0.18, HEAD_MAX = 0.45;
+
+  function headFraction(person) {
+    const ar = person.h / Math.max(1, person.w);
+    return clamp(HEAD_WIDTH_FACTOR / ar, HEAD_MIN, HEAD_MAX);
+  }
+
+  /** Frações [x, y, w, h] da zona, calculadas para ESTA pessoa. */
+  function zoneFractions(person) {
+    const hf = headFraction(person);
+    const torsoY = Math.min(0.92, hf + 0.04);
+    return {
+      head: [0.18, 0.00, 0.64, hf],
+      eyes: [0.24, hf * 0.15, 0.52, hf * 0.45],
+      torso: [0.10, torsoY, 0.80, Math.max(0.18, 0.62 - hf)]
+    };
+  }
+
+  /** Compatibilidade: frações de referência para uma pessoa de corpo inteiro. */
   const ZONES = {
     head: [0.18, 0.00, 0.64, 0.20],
     eyes: [0.24, 0.04, 0.52, 0.12],
@@ -499,7 +522,7 @@
   };
 
   function zoneBox(person, name) {
-    const z = ZONES[name];
+    const z = zoneFractions(person)[name];
     if (!z) throw new Error('zona desconhecida: ' + name);
     return {
       x: person.x + person.w * z[0],
@@ -596,10 +619,12 @@
         if ((d.score || 0) < minScore) return;
 
         const c = center(d.box);
-        // regra central: o CENTRO do EPI precisa estar dentro da zona.
-        // É isso que impede um "capacete" detectado longe da cabeça (ou em
-        // outra pessoa) de ser atribuído a esta pessoa.
-        if (!pointInBox(c, zone, 0.10)) return;
+        // Regra central: o CENTRO do EPI dentro da zona evita pegar o capacete
+        // de outra pessoa. Aceita também sobreposição forte com a zona, para
+        // não reprovar quando o EPI é grande e o centro cai logo abaixo da
+        // borda (capacete grande, pessoa perto da câmera).
+        const inZone = pointInBox(c, zone, 0.10) || overlapRatio(d.box, zone) >= 0.30;
+        if (!inZone) return;
 
         // descarta detecções minúsculas (ruído) e gigantes (falso positivo)
         const ref = minDim[kind] || 1;
@@ -837,12 +862,14 @@
   }
 
   return {
-    version: '3.1.0',
+    version: '3.2.0',
     clamp: clamp,
     iou: iou,
     overlapRatio: overlapRatio,
     makeView: makeView,
     ZONES: ZONES,
+    headFraction: headFraction,
+    zoneFractions: zoneFractions,
     zoneBox: zoneBox,
     center: center,
     pointInBox: pointInBox,
@@ -905,7 +932,7 @@
     minHitsToCount: 2,
 
     // dados
-    tracks: [], nextId: 1,
+    tracks: [], nextId: 1, pendingPasses: [],
     totals: { total: 0, compliant: 0, noncompliant: 0, unknown: 0,
               helmet: { yes: 0, no: 0 }, goggles: { yes: 0, no: 0 }, coat: { yes: 0, no: 0 } },
     history: [], peak: 0, startTime: Date.now(),
@@ -1021,6 +1048,7 @@
     $('startBtn').classList.add('primary');
     ['flipBtn', 'mirrorBtn', 'pauseBtn', 'shotBtn'].forEach(id => { const el = $(id); if (el) el.disabled = true; });
     S.tracks = [];
+    S.pendingPasses = [];
     S.epiStatus.dets = [];
     clearOverlay();
     renderStats();
@@ -1072,6 +1100,7 @@
       S.busyPerson = true; S.lastPersonAt = now;
       detectPersons().catch(err => console.error(err)).finally(() => { S.busyPerson = false; });
     }
+    if (S.pendingPasses.length && now - S.lastEpiAt > 2600) flushPasses();
     if (S.epiEnabled && !S.busyEpi && now - S.lastEpiAt >= S.epiIntervalMs && S.tracks.length) {
       S.busyEpi = true; S.lastEpiAt = now;
       detectEPI().catch(err => console.error(err)).finally(() => { S.busyEpi = false; });
@@ -1235,7 +1264,7 @@
       } else if (t.hits === S.minHitsToCount) {
         count = true;
       }
-      if (count) { t.counted = true; registerPass(t); }
+      if (count) { t.counted = true; queuePass(t); }
     });
 
     const active = S.tracks.filter(t => t.hits >= S.minHitsToCount).length;
@@ -1312,6 +1341,7 @@
       });
       t.status = E.overallStatus(t.epi, requiredKinds());
     });
+    flushPasses();
     renderStats();
   }
 
@@ -1380,6 +1410,35 @@
   }
 
   /* ---------------------------- contagem ----------------------------------- */
+  /* Uma pessoa pode entrar no quadro antes de o EPI ser avaliado. Se
+     registrássemos na hora, ela seria classificada como "indeterminado" mesmo
+     tendo capacete. Então a passagem fica na fila até a votação fechar (ou
+     até o prazo vencer, para não travar a fila).                              */
+  function queuePass(t) {
+    if (!S.epiEnabled || !requiredKinds().length) { registerPass(t); return; }
+    S.pendingPasses.push({ track: t, deadline: Date.now() + 2500 });
+  }
+
+  function epiSettled(t) {
+    const kinds = requiredKinds();
+    if (!kinds.length) return true;
+    return kinds.every(k => {
+      const v = t.votes[k];
+      return v && v.hist.length >= v.minSamples;
+    });
+  }
+
+  function flushPasses() {
+    const now = Date.now();
+    const rest = [];
+    S.pendingPasses.forEach(p => {
+      // a trilha pode ter sido descartada; guardamos os dados nela mesma
+      if (epiSettled(p.track) || now >= p.deadline) registerPass(p.track);
+      else rest.push(p);
+    });
+    S.pendingPasses = rest;
+  }
+
   function registerPass(t) {
     const req = requiredKinds();
     const status = req.length ? E.overallStatus(t.epi, req) : 'unknown';
@@ -1455,10 +1514,12 @@
       const tag = '#' + t.id + (S.epiEnabled ? statusTag(t) : '');
       ctx.font = '700 11px ui-sans-serif, system-ui, sans-serif';
       const tw = ctx.measureText(tag).width + 14;   // medir DEPOIS de definir a fonte
+      const tagX = Math.max(2, Math.min(b.x, W - tw - 2));   // não vaza pela borda
+      const tagY = Math.max(0, b.y - 18);
       ctx.fillStyle = col;
-      ctx.fillRect(b.x, Math.max(0, b.y - 18), tw, 17);
+      ctx.fillRect(tagX, tagY, tw, 17);
       ctx.fillStyle = '#04121f';
-      ctx.fillText(tag, b.x + 6, Math.max(0, b.y - 18) + 12);
+      ctx.fillText(tag, tagX + 6, tagY + 12);
 
       // zonas (depuração)
       if (S.showZones && S.epiEnabled) {
@@ -1475,8 +1536,8 @@
 
       // ícones de EPI abaixo da caixa
       if (S.epiEnabled && requiredKinds().length) {
-        // fica dentro da caixa, no rodapé, para nunca ser cortada pela borda
-        let ix = b.x + 3, iy = Math.min(b.y + b.h - 21, H - 22);
+        // logo abaixo da etiqueta: o rodapé do vídeo é coberto pela barra de status
+        let ix = Math.max(2, Math.min(b.x + 3, W - 90)), iy = Math.min(b.y + 2, H - 22);
         requiredKinds().forEach(k => {
           const st = t.epi[k].state;
           const name = { helmet: 'capacete', goggles: 'óculos', coat: 'jaleco' }[k];
@@ -1536,6 +1597,11 @@
       const yes = $(k + 'Yes'), no = $(k + 'No');
       if (yes) yes.textContent = T[k].yes;
       if (no) no.textContent = T[k].no;
+      const cell = document.querySelector('.epi-box[data-kind="' + k + '"]');
+      if (cell) {
+        cell.style.opacity = S.required[k] ? '1' : '.42';
+        cell.title = S.required[k] ? '' : 'não exigido no ambiente atual';
+      }
     });
     $('logCount').textContent = S.history.length;
     const pct = (v) => T.total ? Math.round(v * 100 / T.total) + '%' : '—';
@@ -1643,7 +1709,7 @@
     $('resetBtn').addEventListener('click', () => {
       if (!confirm('Zerar contadores e histórico do dia?')) return;
       S.totals = { total: 0, compliant: 0, noncompliant: 0, unknown: 0, helmet: { yes: 0, no: 0 }, goggles: { yes: 0, no: 0 }, coat: { yes: 0, no: 0 } };
-      S.history = []; S.peak = 0; S.tracks = []; S.nextId = 1;
+      S.history = []; S.peak = 0; S.tracks = []; S.nextId = 1; S.pendingPasses = [];
       $('peakCount').textContent = 0; $('liveCount').textContent = 0;
       save(); renderStats(); renderLog();
       toast('Zerado', '🧹');
@@ -1817,6 +1883,9 @@
   }
 
   load();
+  // O motor embutido só conhece capacete: normaliza a configuração salva
+  // (senão ele cobra óculos e jaleco que nenhum modelo local pode ver).
+  if (S.backend === 'local') S.required = { helmet: true, goggles: false, coat: false };
   S.showZones = false;
   wireUI();
   syncUI();
@@ -1839,5 +1908,5 @@
 })();
 
 </script>
-<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a50d360699aee2d1',t:'MTc5MzA1NzAzMA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a5115f36dad2b559',t:'MTc5MzEwMDY2MA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
